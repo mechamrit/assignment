@@ -1,0 +1,422 @@
+basePath: /api/v1
+definitions:
+  controllers.CreateDrawingRequest:
+    properties:
+      description:
+        maxLength: 500
+        type: string
+      project_id:
+        type: integer
+      title:
+        maxLength: 100
+        minLength: 3
+        type: string
+    required:
+    - project_id
+    - title
+    type: object
+  controllers.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  controllers.RegisterRequest:
+    properties:
+      password:
+        minLength: 8
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/models.UserRole'
+        enum:
+        - admin
+        - drafter
+        - shift_lead
+        - final_qc
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - password
+    - role
+    - username
+    type: object
+  models.Drawing:
+    properties:
+      assignee:
+        $ref: '#/definitions/models.User'
+      assignee_id:
+        type: integer
+      author:
+        $ref: '#/definitions/models.User'
+      author_id:
+        description: Creator of the drawing (Nullable for existing)
+        type: integer
+      created_at:
+        type: string
+      current_stage:
+        $ref: '#/definitions/models.Stage'
+      description:
+        type: string
+      drawing_url:
+        description: Link to S3/CDN file
+        type: string
+      id:
+        type: integer
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: integer
+      revision:
+        description: Business Revision (increases on rework/submit)
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+      version:
+        description: Technical Concurrency Lock
+        type: integer
+    required:
+    - title
+    type: object
+  models.Project:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      drawings:
+        items:
+          $ref: '#/definitions/models.Drawing'
+        type: array
+      id:
+        type: integer
+      members:
+        description: Relationships
+        items:
+          $ref: '#/definitions/models.User'
+        type: array
+      name:
+        type: string
+      updated_at:
+        type: string
+    required:
+    - name
+    type: object
+  models.Stage:
+    enum:
+    - unassigned
+    - drafting
+    - first_qc
+    - final_qc
+    - approved
+    type: string
+    x-enum-varnames:
+    - StageUnassigned
+    - StageDrafting
+    - StageFirstQC
+    - StageFinalQC
+    - StageApproved
+  models.User:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      role:
+        allOf:
+        - $ref: '#/definitions/models.UserRole'
+        description: System-wide default role
+      updated_at:
+        type: string
+      username:
+        type: string
+    required:
+    - username
+    type: object
+  models.UserRole:
+    enum:
+    - admin
+    - drafter
+    - shift_lead
+    - final_qc
+    type: string
+    x-enum-varnames:
+    - RoleAdmin
+    - RoleDrafter
+    - RoleShiftLead
+    - RoleFinalQC
+host: localhost:8081
+info:
+  contact: {}
+  description: This is a quality control system for managing engineering drawings
+    through a review workflow.
+  termsOfService: http://swagger.io/terms/
+  title: Engineering Drawing QC System API
+  version: "1.0"
+paths:
+  /drawings:
+    get:
+      description: Retrieve all drawings, optionally filtered by project_id
+      parameters:
+      - description: Project ID filter
+        in: query
+        name: project_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Drawing'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all drawings
+      tags:
+      - drawings
+    post:
+      consumes:
+      - application/json
+      description: Create a new engineering drawing in the unassigned stage
+      parameters:
+      - description: Drawing Content
+        in: body
+        name: drawing
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.CreateDrawingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Drawing'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new drawing
+      tags:
+      - drawings
+  /drawings/{id}/claim:
+    post:
+      description: Assign the drawing to the current user
+      parameters:
+      - description: Drawing ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Claim a drawing
+      tags:
+      - drawings
+  /drawings/{id}/reject:
+    post:
+      description: Reject the drawing and send it back to drafting
+      parameters:
+      - description: Drawing ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reject a drawing
+      tags:
+      - drawings
+  /drawings/{id}/release:
+    post:
+      description: Unassign the drawing from the current user
+      parameters:
+      - description: Drawing ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Release a drawing
+      tags:
+      - drawings
+  /drawings/{id}/submit:
+    post:
+      description: Submit the drawing to the next stage
+      parameters:
+      - description: Drawing ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit a drawing
+      tags:
+      - drawings
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT token
+      parameters:
+      - description: Login Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login a user
+      tags:
+      - auth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with a specific role
+      parameters:
+      - description: Registration Info
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
